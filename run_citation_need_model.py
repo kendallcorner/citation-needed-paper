@@ -173,46 +173,30 @@ def get_article_statements(article_name):
     query = session.get(action='query', titles=article_name)
     pages = query['query']['pages']
     soup = None
-    entity_title = None
-    entity_id = None
 
     if not pages:
         return
 
     for pageid in pages:
         data = session.get(action='parse', pageid=pageid, prop='text')
-        entity_title = data['parse']['title']
-        entity_id = pageid
         text = data['parse']['text']['*']
         soup = BeautifulSoup(text, 'lxml')
-
         section = "MAIN_SECTION"
-        sectioncount = 0
-        para = 0
-        outstr = 'entity_id\tentity_title\tsection_id\tsection\tprg_idx\t\
-            sentence_idx\tstatement\n'
-
+        outstr = 'section\tstatement\n'
         for child in soup.html.body.div.contents:
             if child.name == 'h2':
                 section = child.text
-                sectioncount += 1
             if child.name == 'p':
                 statements = splitter(child.text)
                 for num, statement in enumerate(statements):
                     if statement == '\n':
                         continue
-                    outstr += entity_id + '\t' + entity_title + '\t' +\
-                        str(sectioncount) + '\t' + section + '\t' + str(para)\
-                        + '\t' + str(num) + '\t' + statement.replace('\n', '') + '\n'
-                para += 1
+                    outstr += section + '\t' + statement.replace('\n', '') + '\n'
             if child.name == 'ul':
                 for num, list_item in enumerate(child.contents):
                     if list_item == '\n':
                         continue
-                    outstr += entity_id + '\t' + entity_title + '\t' +\
-                        str(sectioncount) + '\t' + section + '\t' + str(para)\
-                        + '\t' + str(num) + '\t' + list_item.text + '\n'
-                para += 1
+                    outstr += section + '\t' + list_item.text + '\n'
 
     fout = open('statements.tsv', 'wt')
     # making a new tsv so I can check the results of the formatting and is
@@ -241,9 +225,20 @@ if __name__ == '__main__':
 
     # store the predictions: printing out the sentence text, the prediction
     # score, and original citation label.
-    outstr = 'Text\tPrediction\tCitation\n'
+    outstr = 'Text\tPrediction\n'
+
+    ordered_list = []
     for idx, y_pred in enumerate(pred):
-        outstr += outstring[idx] + '\t' + str(y_pred[0]) + '\t' + '\n'
+        list = [outstring[idx], y_pred[0]]
+        ordered_list.append(list)
+
+    def sortPred(a):
+        return a[1]
+
+    ordered_list.sort(key=sortPred)
+
+    for statement, pred in ordered_list:
+        outstr += statement + '\t' + str(pred) + '\n'
 
     fout = open(p.out_dir + '/' + p.lang + '_predictions_sections.tsv', 'wt')
     fout.write(outstr)
