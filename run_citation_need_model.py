@@ -3,6 +3,8 @@ import argparse
 import pandas as pd
 import pickle
 import numpy as np
+import mwapi
+from bs4 import BeautifulSoup
 
 from keras.models import load_model
 from keras.preprocessing.sequence import pad_sequences
@@ -120,7 +122,6 @@ def construct_instance_reasons(statement_path, section_dict_path,
     # construct the training data
     X = []
     sections = []
-    y = []
     outstring = []
     for index, row in statements.iterrows():
         try:
@@ -142,28 +143,83 @@ def construct_instance_reasons(statement_path, section_dict_path,
                 np.array(
                     [section_dict[section] if section in section_dict else 0]))
 
-            label = row['citations']
-
             # some of the rows are corrupt, thus, we need to check if the\
             # labels are actually boolean.
-            if not (isinstance(label, bool)):
-                continue
 
-            y.append(label)
             X.append(X_inst)
             outstring.append(str(row["statement"]))
             # entity_id  revision_id timestamp   entity_title    section_id  section prg_idx sentence_idx    statement   citations
 
         except Exception as e:
             print(row)
-            print(e)
+            print(e.message)
     X = pad_sequences(X, maxlen=max_len, value=vocab_w2v['UNK'], padding='pre')
 
     encoder = LabelBinarizer()
-    y = encoder.fit_transform(y)
-    y = to_categorical(y)
 
-    return X, np.array(sections), y, encoder, outstring
+    return X, np.array(sections), encoder, outstring
+
+
+def splitter(mystring):
+    '''Splitter to split types of sentences'''
+    mylist = mystring.split(". ")
+    mylist = list(map(lambda a: a.split(".[*] "), mylist))
+    return [y for x in mylist for y in x]
+
+
+def get_article_statements(article_name):
+    '''get articles using mwapi and Beautiful Soup and format for model'''
+    session = mwapi.Session('https://en.wikipedia.org')
+    query = session.get(action='query', titles=article_name)
+    pages = query['query']['pages']
+    soup = None
+    entity_title = None
+    entity_id = None
+
+    if not pages:
+        return
+
+    for pageid in pages:
+        data = session.get(action='parse', pageid=pageid, prop='text')
+        entity_title = data['parse']['title']
+        entity_id = pageid
+        text = data['parse']['text']['*']
+        soup = BeautifulSoup(text, 'lxml')
+
+        section = "MAIN_SECTION"
+        sectioncount = 0
+        para = 0
+        outstr = 'entity_id\tentity_title\tsection_id\tsection\tprg_idx\t\
+            sentence_idx\tstatement\n'
+
+        for child in soup.html.body.div.contents:
+            if child.name == 'h2':
+                section = child.text
+                sectioncount += 1
+            if child.name == 'p':
+                statements = splitter(child.text)
+                for num, statement in enumerate(statements):
+                    if statement == '\n':
+                        continue
+                    outstr += entity_id + '\t' + entity_title + '\t' +\
+                        str(sectioncount) + '\t' + section + '\t' + str(para)\
+                        + '\t' + str(num) + '\t' + statement.replace('\n', '') + '\n'
+                para += 1
+            if child.name == 'ul':
+                for num, list_item in enumerate(child.contents):
+                    if list_item == '\n':
+                        continue
+                    outstr += entity_id + '\t' + entity_title + '\t' +\
+                        str(sectioncount) + '\t' + section + '\t' + str(para)\
+                        + '\t' + str(num) + '\t' + list_item.text + '\n'
+                para += 1
+
+    fout = open('statements.tsv', 'wt')
+    # making a new tsv so I can check the results of the formatting and is
+    # quicker to feed into existing script
+    fout.write(outstr)
+    fout.flush()
+    fout.close()
 
 
 if __name__ == '__main__':
@@ -175,8 +231,10 @@ if __name__ == '__main__':
     # load the data
     max_seq_length = model.input[0].shape[1].value
 
-    X, sections, y, encoder, outstring = construct_instance_reasons(
-        p.input, p.sections, p.vocab, max_seq_length)
+    get_article_statements(p.input)
+
+    X, sections, encoder, outstring = construct_instance_reasons(
+        'statements.tsv', p.sections, p.vocab, max_seq_length)
 
     # classify the data
     pred = model.predict([X, sections])
@@ -185,8 +243,7 @@ if __name__ == '__main__':
     # score, and original citation label.
     outstr = 'Text\tPrediction\tCitation\n'
     for idx, y_pred in enumerate(pred):
-        outstr += outstring[idx] + '\t' + str(y_pred[0]) + '\t' +\
-            str(y[idx]) + '\n'
+        outstr += outstring[idx] + '\t' + str(y_pred[0]) + '\t' + '\n'
 
     fout = open(p.out_dir + '/' + p.lang + '_predictions_sections.tsv', 'wt')
     fout.write(outstr)

@@ -1,3 +1,21 @@
+# Addition to the citation needed script:
+
+This is now a Python 3 script.
+
+`virtualenv --python=python3 <virtual_env_path>`
+
+`source <virtual_env_path>/bin/activate`
+
+`pip install -r requirements3.txt`
+
+With the english model and dictionaries installed as below you may run this command: 
+
+`python run_citation_need_model.py -i 'Howdy Doody' -m models/fa_en_model_rnn_attention_section.h5 -v embeddings/word_dict_en.pck -s embeddings/section_dict_en.pck -o output_folder -l en`
+
+Note: the input flag is now the name of the wikipedia article that you would like to analyze.
+
+
+
 # Citation Needed: A Taxonomy and Algorithmic Assessment of Wikipedia's Verifiability
 Repository of data and code to use the models described in the paper "Citation Needed: A Taxonomy and Algorithmic Assessment of Wikipedia's Verifiability"
 
