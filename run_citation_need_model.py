@@ -212,10 +212,12 @@ if __name__ == '__main__':
         list = [outstring[idx], y_pred[0]]
         ordered_list.append(list)
 
-    def sortPred(a):
-        return a[1]
+    # def sortPred(a):
+    #     return a[1]
 
-    ordered_list.sort(key=sortPred)
+    # ordered_list.sort(key=sortPred)
+
+    ordered_list = sorted(ordered_list, key=lambda a: a[1])
 
     for statement, pred in ordered_list:
         outstr += statement + '\t' + str(pred) + '\n'
